@@ -3,7 +3,6 @@
 
 #include "cvector.h"
 
-#define iWrap(x) *(int *)(x)
 
 int main(void) {
     // Vector from array
@@ -31,6 +30,18 @@ int main(void) {
     } else {
         printf("Not found\n");
     }
+
+    // Iterators example
+    printf("You entered: ");
+    for (int *it = cv_begin(vec2); it != cv_end(vec2); ++it) {
+        printf("%d ", *it);
+    }
+    printf("\n");
+    printf("reverse iterators: ");
+    for (int *it = cv_rbegin(vec2); it != cv_rend(vec2); --it) {
+        printf("%d ", *it);
+    }
+    printf("\n");
 
     return 0;
 }

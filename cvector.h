@@ -8,6 +8,11 @@
 
 #include <stdbool.h>
 
+
+#define iWrap(x) *(int *)(x)
+#define dWrap(x) *(double *)(x)
+#define sWrap(x) *(char **)(x)
+
 typedef struct cvector {
     size_t size; // Current num of elements
     size_t member; // Size of each element
@@ -30,6 +35,21 @@ cvec_t *cv_from_arr(const void *arr, size_t size, size_t member, int (*comparato
 
 // Deleting existing cvector
 void cv_destroy(cvec_t *vec);
+
+
+// ==== Iterators ==== //
+
+// Pointer on first element
+void *cv_begin(const cvec_t *vec);
+
+// Pointer after last element
+void *cv_end(const cvec_t *vec);
+
+// Pointer on last element
+void *cv_rbegin(const cvec_t *vec);
+
+// Pointer before first element
+void *cv_rend(const cvec_t *vec);
 
 
 // ==== Element access ==== //
@@ -57,6 +77,9 @@ size_t cv_capacity(const cvec_t *vec);
 
 // Returns the number of elements
 size_t cv_size(const cvec_t *vec);
+
+// Reduces capacity to size
+void cv_collapse(cvec_t *vec);
 
 
 // ==== Modifiers ==== //
@@ -93,6 +116,10 @@ void cv_sort(const cvec_t *vec);
 
 // Returns index of first entry of target
 size_t cv_find(const cvec_t *vec, const void *what);
+
+size_t cv_rfind(const cvec_t *vec, const void *what);
+
+size_t cv_count(const cvec_t *vec, const void *what);
 
 
 // ==== Default Comparators ==== //

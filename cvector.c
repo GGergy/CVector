@@ -10,6 +10,7 @@
 
 const size_t cv_npos = -1;
 
+
 // ==== Internals ==== //
 
 static const size_t MIN_CAPACITY = 8;
@@ -26,8 +27,7 @@ static size_t compute_next_cap(const size_t current_cap) {
     return current_cap + current_cap / 2;
 }
 
-
-static void cv_realloc(cvec_t *vec, const size_t new_size) {
+static void cv_realloc_(cvec_t *vec, const size_t new_size) {
     void *new_data = realloc(vec->data, new_size * vec->member);
 
     if (new_data != NULL) {
@@ -36,16 +36,12 @@ static void cv_realloc(cvec_t *vec, const size_t new_size) {
     }
 }
 
-static void *at_insecure(const cvec_t *vec, const size_t index) {
-    return (char *) vec->data + index * vec->member;
-}
-
 
 // ==== Default Comparators ==== //
 
 int int_comparator(const void *a, const void *b) {
-    const int ai = *((int *) a);
-    const int bi = *((int *) b);
+    const int ai = iWrap(a);
+    const int bi = iWrap(b);
 
     if (ai < bi) return -1;
     if (ai > bi) return 1;
@@ -53,8 +49,8 @@ int int_comparator(const void *a, const void *b) {
 }
 
 int double_comparator(const void *a, const void *b) {
-    const double ad = *((double *) a);
-    const double bd = *((double *) b);
+    const double ad = dWrap(a);
+    const double bd = dWrap(b);
 
     if (ad < bd) return -1;
     if (ad > bd) return 1;
@@ -62,8 +58,8 @@ int double_comparator(const void *a, const void *b) {
 }
 
 int string_comparator(const void *a, const void *b) {
-    const char *as = *((const char **) a);
-    const char *bs = *((const char **) b);
+    const char *as = sWrap(a);
+    const char *bs = sWrap(b);
 
     const int res = strcmp(as, bs);
     if (res < 0) return -1;
@@ -107,6 +103,26 @@ void cv_destroy(cvec_t *vec) {
 }
 
 
+// ==== Iterators ==== //
+void *cv_begin(const cvec_t *vec) {
+    return vec->data;
+}
+
+
+void *cv_end(const cvec_t *vec) {
+    return (char *) vec->data + vec->member * vec->size;
+}
+
+
+void *cv_rbegin(const cvec_t *vec) {
+    return (char *) vec->data + vec->member * (vec->size - 1);
+}
+
+void *cv_rend(const cvec_t *vec) {
+    return (char *) vec->data - vec->member;
+}
+
+
 // ==== Element access ==== //
 
 void *cv_at(const cvec_t *vec, const size_t index) {
@@ -145,7 +161,11 @@ size_t cv_size(const cvec_t *vec) {
 void cv_reserve(cvec_t *vec, const size_t reserve) {
     if (vec->_reserved > reserve) return;
 
-    cv_realloc(vec, reserve);
+    cv_realloc_(vec, reserve);
+}
+
+void cv_collapse(cvec_t *vec) {
+    cv_realloc_(vec, vec->size);
 }
 
 
@@ -163,21 +183,24 @@ void cv_to(const cvec_t *vec, const void *data, const size_t index) {
 // Insecure
 void cv_insert(cvec_t *vec, const void *data, const size_t index) {
     if (vec->_reserved == vec->size) {
-        cv_realloc(vec, compute_next_cap(vec->size));
+        cv_realloc_(vec, compute_next_cap(vec->size));
     }
 
-    for (size_t i = vec->size - 1; i > index; i--) {
-        cv_to(vec, at_insecure(vec, i), i + 1);
+    const void *end = (char *) vec->data + index * vec->member;
+    char *it;
+    for (it = cv_end(vec); it != end; it -= vec->member) {
+        memcpy(it, it - vec->member, vec->member);
     }
 
-    cv_to(vec, data, index);
+    memcpy(it, data, vec->member);
     vec->size++;
 }
 
 // Insecure
 void cv_erase(cvec_t *vec, const size_t index) {
-    for (size_t i = index + 1; i < vec->size; i++) {
-        cv_to(vec, at_insecure(vec, i), i - 1);
+    const void *end = cv_end(vec);
+    for (char *it = (char *) vec->data + vec->member * index + 1; it != end; it += vec->member) {
+        memcpy(it - vec->member, it, vec->member);
     }
 
     vec->size--;
@@ -185,7 +208,7 @@ void cv_erase(cvec_t *vec, const size_t index) {
 
 void cv_push_back(cvec_t *vec, const void *data) {
     if (vec->_reserved == vec->size) {
-        cv_realloc(vec, compute_next_cap(vec->size));
+        cv_realloc_(vec, compute_next_cap(vec->size));
     }
 
     cv_to(vec, data, vec->size++);
@@ -201,10 +224,13 @@ void cv_resize(cvec_t *vec, const size_t new_size, const void *ini_value) {
         vec->size = new_size;
         return;
     }
-    cv_realloc(vec, new_size);
-    for (size_t i = vec->size; i < new_size; i++) {
-        cv_to(vec, ini_value, i);
+    cv_realloc_(vec, new_size);
+
+    const void *end = (char *) vec->data + new_size * vec->member;
+    for (char *it = cv_rbegin(vec); it != end; it += vec->member) {
+        memcpy(it, ini_value, vec->member);
     }
+
     vec->size = new_size;
 }
 
@@ -236,10 +262,42 @@ void cv_sort(const cvec_t *vec) {
 }
 
 size_t cv_find(const cvec_t *vec, const void *what) {
-    for (size_t i = 0; i < vec->size; i++) {
-        if (vec->comparator(at_insecure(vec, i), what) == 0) {
-            return i;
+    const void *end = cv_end(vec);
+    size_t index = 0;
+
+    for (const char *it = cv_begin(vec); it != end; it += vec->member) {
+        if (vec->comparator(it, what) == 0) {
+            return index;
         }
+        ++index;
     }
     return cv_npos;
+}
+
+size_t cv_rfind(const cvec_t *vec, const void *what) {
+    if (vec->size == 0) return cv_npos;
+
+    const void *end = cv_rend(vec);
+    size_t index = vec->size - 1;
+
+    for (const char *it = cv_rbegin(vec); it != end; it -= vec->member) {
+        if (vec->comparator(it, what) == 0) {
+            return index;
+        }
+        index--;
+    }
+    return cv_npos;
+}
+
+size_t cv_count(const cvec_t *vec, const void *what) {
+    size_t count = 0;
+
+    const void *end = cv_end(vec);
+
+    for (const char *it = cv_begin(vec); it != end; it += vec->member) {
+        if (vec->comparator(it, what) == 0) {
+            count++;
+        }
+    }
+    return count;
 }
