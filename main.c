@@ -4,6 +4,12 @@
 #include "cvector.h"
 
 
+void square(void *arg) {
+    int a = *((int *) arg);
+    int *ptr = arg;
+    *ptr = a * a;
+}
+
 int main(void) {
     // Vector from array
     int arr[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -39,6 +45,25 @@ int main(void) {
     printf("\n");
     printf("reverse iterators: ");
     for (int *it = cv_rbegin(vec2); it != cv_rend(vec2); --it) {
+        printf("%d ", *it);
+    }
+    printf("\n");
+
+    // Algorithms
+
+    cvec_t *copy = cv_copy(vec2);
+    cv_apply(copy, square);
+    cv_reverse(copy);
+
+    printf("Squared and reversed: ");
+    for (int *it = cv_begin(copy); it != cv_end(copy); ++it) {
+        printf("%d ", *it);
+    }
+    printf("\n");
+
+    cv_extend_back(vec2, copy);
+    printf("Extend back: ");
+    for (int *it = cv_begin(vec2); it != cv_end(vec2); ++it) {
         printf("%d ", *it);
     }
     printf("\n");

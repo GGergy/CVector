@@ -13,10 +13,10 @@ const size_t cv_npos = -1;
 
 // ==== Internals ==== //
 
-static const size_t MIN_CAPACITY = 8;
+static const size_t MIN_CAPACITY = 4;
 
 static size_t compute_next_cap(const size_t current_cap) {
-    if (current_cap == 0) {
+    if (current_cap < MIN_CAPACITY) {
         return MIN_CAPACITY;
     }
 
@@ -196,6 +196,67 @@ void cv_insert(cvec_t *vec, const void *data, const size_t index) {
     vec->size++;
 }
 
+void cv_insert_it(cvec_t *vec, const void *data, void *iter) {
+    if (vec->_reserved == vec->size) {
+        cv_realloc_(vec, compute_next_cap(vec->size));
+    }
+
+    for (char *it = cv_end(vec); it != iter; it -= vec->member) {
+        memcpy(it, it - vec->member, vec->member);
+    }
+
+    memcpy(iter, data, vec->member);
+    vec->size++;
+}
+
+
+void cv_extend(cvec_t *vec, const cvec_t *other, const size_t index) {
+    cv_reserve(vec, vec->size + other->size);
+
+    const void *end = (char *) vec->data + (index - 1) * vec->member;
+    char *it;
+    const size_t axis = other->size * vec->member;
+    for (it = cv_rbegin(vec); it != end; it -= vec->member) {
+        memcpy(it + axis, it, vec->member);
+    }
+    for (char *oit = cv_begin(other); oit != cv_end(other); oit += vec->member) {
+        it += vec->member;
+        memcpy(it, oit, vec->member);
+    }
+}
+
+
+// Extending vector with other vector before iterator
+void cv_extend_it(cvec_t *vec, const cvec_t *other, void *iter) {
+    cv_reserve(vec, vec->size + other->size);
+
+    const char *end = (char *) iter - 1;
+    const size_t axis = other->size * vec->member;
+    for (char *it = cv_rbegin(vec); it != end; it -= vec->member) {
+        memcpy(it + axis, it, vec->member);
+    }
+
+    char *it = iter;
+    for (char *oit = cv_begin(other); oit != cv_end(other); oit += vec->member, it += vec->member) {
+        memcpy(it, oit, vec->member);
+    }
+    vec->size += other->size;
+}
+
+
+// Extending vector with other vector in the end
+void cv_extend_back(cvec_t *vec, const cvec_t *other) {
+    cv_reserve(vec, vec->size + other->size);
+
+    char *it = cv_end(vec);
+    for (char *oit = cv_begin(other); oit != cv_end(other); oit += vec->member, it += vec->member) {
+        memcpy(it, oit, vec->member);
+    }
+
+    vec->size += other->size;
+}
+
+
 // Insecure
 void cv_erase(cvec_t *vec, const size_t index) {
     const void *end = cv_end(vec);
@@ -254,6 +315,46 @@ void cv_swap(cvec_t *vec, cvec_t *other) {
     other->data = tmp.data;
 }
 
+void cv_reverse(const cvec_t *vec) {
+    void *buffer = malloc(vec->member);
+    char *front = cv_begin(vec);
+    char *back = cv_rbegin(vec);
+
+    for (size_t i = 0; i != vec->size / 2; i++) {
+        const size_t axis = vec->member * i;
+
+        memcpy(buffer, back - axis, vec->member);
+        memcpy(back - axis, front + axis, vec->member);
+        memcpy(front + axis, buffer, vec->member);
+    }
+}
+
+
+void cv_erase_it(cvec_t *vec, void *iter) {
+    const void *end = cv_end(vec);
+    for (char *it = (char *) iter + vec->member; it != end; it += vec->member) {
+        memcpy(it - vec->member, it, vec->member);
+    }
+
+    vec->size--;
+}
+
+// Remove by value, first left
+bool cv_remove(cvec_t *vec, void *what) {
+    const void *end = cv_end(vec);
+
+    for (char *it = cv_begin(vec); it != end; it += vec->member) {
+        if (vec->comparator(it, what) == 0) {
+            for (char *jt = it + vec->member; jt != end; jt += vec->member) {
+                memcpy(jt - vec->member, jt, vec->member);
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 // ==== Algorithms ==== //
 
@@ -300,4 +401,23 @@ size_t cv_count(const cvec_t *vec, const void *what) {
         }
     }
     return count;
+}
+
+cvec_t *cv_copy(const cvec_t *vec) {
+    cvec_t *new_vec = cv_new(vec->member, vec->comparator);
+    cv_reserve(new_vec, vec->size);
+
+    char *oit = new_vec->data;
+    for (char *it = cv_begin(vec); it != cv_end(vec); it += vec->member, oit += vec->member) {
+        memcpy(oit, it, vec->member);
+    }
+    new_vec->size = vec->size;
+
+    return new_vec;
+}
+
+void cv_apply(const cvec_t *vec, void (*f)(void *a)) {
+    for (char *it = cv_begin(vec); it != cv_end(vec); it += vec->member) {
+        f(it);
+    }
 }
